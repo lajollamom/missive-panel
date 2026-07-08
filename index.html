@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Client History</title>
+<script src="https://integrations.missiveapp.com/missive.js"></script>
+<style>
+  body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:10px 10px 24px;color:#888;background:#fff}
+  #dbg{position:fixed;bottom:0;left:0;right:0;font-size:10px;color:#bbb;background:#fafafa;padding:2px 6px;border-top:1px solid #eee}
+</style>
+</head>
+<body>
+<div id="p">Select a conversation…</div>
+<div id="dbg">loading bridge…</div>
+<script>
+// Generic Missive sidebar shell for the LJM client panel.
+// All configuration arrives via the iframe URL: ?token=...&exec=<encoded exec URL>
+// Nothing sensitive lives in this file. Served from GitHub Pages because Google
+// Apps Script wraps HtmlService pages in a nested sandbox iframe that breaks
+// missive.js's postMessage bridge.
+var qs = new URLSearchParams(location.search);
+var TOKEN = qs.get('token') || '';
+var EXEC = qs.get('exec') || '';
+var seq = 0, evts = 0;
+function dbg(m){ var d = document.getElementById('dbg'); if (d) d.textContent = m; }
+function ours(a){ return /@lajollamom\.com$/i.test(String(a || '')); }
+function senderOf(c){
+  var as = (c && c.authors) || [];
+  for (var i = 0; i < as.length; i++) if (as[i] && as[i].address && !ours(as[i].address)) return as[i].address;
+  var f = c && c.latest_message && c.latest_message.from_field;
+  if (f && f.address && !ours(f.address)) return f.address;
+  return '';
+}
+function load(email, conv){
+  var my = ++seq;
+  document.getElementById('p').innerHTML = 'Loading…';
+  var u = EXEC + '?action=clientPanel&mode=data&token=' + TOKEN +
+          '&email=' + encodeURIComponent(email || '') + '&conversation=' + encodeURIComponent(conv || '');
+  fetch(u).then(function(r){ return r.text(); }).then(function(h){
+    if (my === seq){ document.getElementById('p').innerHTML = h; dbg('bridge ok · events: ' + evts); }
+  }).catch(function(e){
+    if (my === seq){ document.getElementById('p').textContent = 'Data fetch failed: ' + e; dbg('fetch error · events: ' + evts); }
+  });
+}
+window.onerror = function(m){ dbg('js error: ' + m); };
+if (!EXEC || !TOKEN) { dbg('missing ?exec= or ?token= in the integration URL'); }
+else if (typeof Missive === 'undefined') { dbg('missive.js did not load'); }
+else {
+  dbg('Missive object present · waiting for event…');
+  Missive.on('change:conversations', function(ids){
+    evts++;
+    if (!ids || !ids.length){ document.getElementById('p').textContent = 'Select a conversation…'; dbg('empty selection · events: ' + evts); return; }
+    dbg('event received · fetching conversation…');
+    Missive.fetchConversations([ids[ids.length - 1]]).then(function(cs){
+      var c = cs && cs[0];
+      if (!c){ dbg('fetchConversations returned nothing'); return; }
+      load(senderOf(c), c.id);
+    }).catch(function(e){ dbg('fetchConversations error: ' + e); });
+  }, { retroactive: true });
+}
+</script>
+</body>
+</html>
