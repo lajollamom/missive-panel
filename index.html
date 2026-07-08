@@ -6,7 +6,7 @@
 <script src="https://integrations.missiveapp.com/missive.js"></script>
 <style>
   body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:10px 10px 24px;color:#888;background:#fff}
-  #dbg{position:fixed;bottom:0;left:0;right:0;font-size:10px;color:#bbb;background:#fafafa;padding:2px 6px;border-top:1px solid #eee}
+  #dbg{display:none;position:fixed;bottom:0;left:0;right:0;font-size:10px;color:#bbb;background:#fafafa;padding:2px 6px;border-top:1px solid #eee}
 </style>
 </head>
 <body>
@@ -22,7 +22,7 @@ var qs = new URLSearchParams(location.search);
 var TOKEN = qs.get('token') || '';
 var EXEC = qs.get('exec') || '';
 var seq = 0, evts = 0;
-function dbg(m){ var d = document.getElementById('dbg'); if (d) d.textContent = m; }
+function dbg(m, ok){ var d = document.getElementById('dbg'); if (d){ d.textContent = m; d.style.display = ok ? 'none' : 'block'; } }
 function ours(a){ return /@lajollamom\.com$/i.test(String(a || '')); }
 function senderOf(c){
   var as = (c && c.authors) || [];
@@ -37,7 +37,7 @@ function load(email, conv){
   var u = EXEC + '?action=clientPanel&mode=data&token=' + TOKEN +
           '&email=' + encodeURIComponent(email || '') + '&conversation=' + encodeURIComponent(conv || '');
   fetch(u).then(function(r){ return r.text(); }).then(function(h){
-    if (my === seq){ document.getElementById('p').innerHTML = h; dbg('bridge ok · events: ' + evts); }
+    if (my === seq){ document.getElementById('p').innerHTML = h; dbg('bridge ok', true); }
   }).catch(function(e){
     if (my === seq){ document.getElementById('p').textContent = 'Data fetch failed: ' + e; dbg('fetch error · events: ' + evts); }
   });
@@ -46,11 +46,11 @@ window.onerror = function(m){ dbg('js error: ' + m); };
 if (!EXEC || !TOKEN) { dbg('missing ?exec= or ?token= in the integration URL'); }
 else if (typeof Missive === 'undefined') { dbg('missive.js did not load'); }
 else {
-  dbg('Missive object present · waiting for event…');
+  dbg('Missive object present · waiting for event…', true);
   Missive.on('change:conversations', function(ids){
     evts++;
-    if (!ids || !ids.length){ document.getElementById('p').textContent = 'Select a conversation…'; dbg('empty selection · events: ' + evts); return; }
-    dbg('event received · fetching conversation…');
+    if (!ids || !ids.length){ document.getElementById('p').textContent = 'Select a conversation…'; dbg('empty selection', true); return; }
+    dbg('event received · fetching conversation…', true);
     Missive.fetchConversations([ids[ids.length - 1]]).then(function(cs){
       var c = cs && cs[0];
       if (!c){ dbg('fetchConversations returned nothing'); return; }
