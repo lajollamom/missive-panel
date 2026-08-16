@@ -5,8 +5,15 @@
 <title>Client History</title>
 <script src="https://integrations.missiveapp.com/missive.js"></script>
 <style>
-  body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:10px 10px 24px;color:#888;background:#fff}
+  body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:10px 10px 24px;color:#333;background:#fff}
   #dbg{display:none;position:fixed;bottom:0;left:0;right:0;font-size:10px;color:#bbb;background:#fafafa;padding:2px 6px;border-top:1px solid #eee}
+  .bk{margin:6px 0;padding:6px 8px;border:1px solid #eee;border-radius:6px}
+  .bk a{color:#2962ad;text-decoration:none}
+  .hd{font-weight:600}
+  .mut{color:#888;font-size:12px}
+  .sec{margin-top:10px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:#666}
+  .tag{display:inline-block;font-size:11px;background:#f0f4f8;border-radius:4px;padding:0 5px;margin-left:4px;color:#556}
+  .warn{color:#a15c00}
 </style>
 </head>
 <body>
@@ -14,15 +21,23 @@
 <div id="dbg">loading bridge…</div>
 <script>
 // Generic Missive sidebar shell for the LJM client panel.
-// All configuration arrives via the iframe URL: ?token=...&exec=<encoded exec URL>
-// Nothing sensitive lives in this file. Served from GitHub Pages because Google
-// Apps Script wraps HtmlService pages in a nested sandbox iframe that breaks
-// missive.js's postMessage bridge.
+// All configuration arrives via the iframe URL — nothing sensitive lives in this file:
+//   ?token=...&exec=<encoded GAS exec URL>        (the original GAS data source)
+//   &brain=<encoded brain base URL>&braintoken=…  (optional: the brain's read-only /panel)
+// With brain params present the page renders the brain's JSON instantly (store-served,
+// ~50ms) and lets the slower GAS HTML replace it when it arrives — GAS still carries the
+// sections the brain doesn't serve yet (HubSpot backstory). Drop the exec param once the
+// brain serves everything; drop the brain params to fall back to pure GAS. Config-only cutover.
+// Served from GitHub Pages because Google Apps Script wraps HtmlService pages in a nested
+// sandbox iframe that breaks missive.js's postMessage bridge.
 var qs = new URLSearchParams(location.search);
 var TOKEN = qs.get('token') || '';
 var EXEC = qs.get('exec') || '';
+var BRAIN = qs.get('brain') || '';
+var BRAINTOKEN = qs.get('braintoken') || '';
 var seq = 0, evts = 0;
 function dbg(m, ok){ var d = document.getElementById('dbg'); if (d){ d.textContent = m; d.style.display = ok ? 'none' : 'block'; } }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function ours(a){ return /@lajollamom\.com$/i.test(String(a || '')); }
 function senderOf(c){
   var as = (c && c.authors) || [];
@@ -31,19 +46,85 @@ function senderOf(c){
   if (f && f.address && !ours(f.address)) return f.address;
   return '';
 }
+// Render the brain's JSON payload. Deliberately spare — this is the instant view; the GAS
+// HTML (fuller formatting + HubSpot backstory) replaces it on arrival when exec is configured.
+function renderBrain(d){
+  var h = [];
+  if (d.name){
+    h.push('<div class="hd">' + esc(d.name) + (d.goesBy ? ' <span class="mut">(goes by ' + esc(d.goesBy) + ')</span>' : '') + '</div>');
+    var bits = [];
+    if (d.repeat) bits.push('repeat client');
+    if (d.clientSince) bits.push('since ' + esc(d.clientSince));
+    if (d.past) bits.push(d.past + ' past stay' + (d.past > 1 ? 's' : ''));
+    if (bits.length) h.push('<div class="mut">' + bits.join(' · ') + '</div>');
+    if (d.nameConflict) h.push('<div class="warn">⚠ cards disagree on this client’s name' + (d.nameVariants ? ': ' + esc(d.nameVariants.join(' / ')) : '') + '</div>');
+  } else if (d.email) {
+    h.push('<div class="mut">No cards found for ' + esc(d.email) + '</div>');
+  }
+  if (d.threadCards && d.threadCards.length){
+    h.push('<div class="sec">This thread</div>');
+    d.threadCards.forEach(function(t){
+      h.push('<div class="bk"><a href="' + esc(t.url) + '" target="_blank">' + esc(t.name) + '</a><span class="tag">' + esc(t.status) + '</span>' +
+        (t.na ? '<div class="mut">📣 ' + esc(t.na) + '</div>' : '') + '</div>');
+    });
+  }
+  if (d.openBookings && d.openBookings.length){
+    h.push('<div class="sec">Open bookings (' + d.openBookings.length + ')</div>');
+    d.openBookings.forEach(function(b){
+      var rows = ['<div class="bk"><a href="' + esc(b.url) + '" target="_blank">' + esc(b.hotel || 'booking') + '</a><span class="tag">' + esc(b.status) + '</span>'];
+      if (b.ci) rows.push('<div class="mut">' + esc(b.ci) + (b.co ? ' → ' + esc(b.co) : '') + '</div>');
+      if (b.na) rows.push('<div class="mut">📣 ' + esc(b.na) + '</div>');
+      (b.threads || []).forEach(function(t){
+        rows.push('<div class="mut"><a href="' + esc(t.url) + '" target="_blank">' + esc(t.side) + ' thread</a> <span class="tag">' + esc(t.basis) + '</span></div>');
+      });
+      if (b.vip) rows.push('<div class="mut">VIP: ' + esc(b.vip) + '</div>');
+      rows.push('</div>');
+      h.push(rows.join(''));
+    });
+  }
+  if (d.openQuotes && d.openQuotes.length){
+    h.push('<div class="sec">Open quotes (' + d.openQuotes.length + ')</div>');
+    d.openQuotes.forEach(function(q){
+      h.push('<div class="bk"><a href="' + esc(q.url) + '" target="_blank">' + esc(q.name) + '</a><span class="tag">' + esc(q.status) + '</span></div>');
+    });
+  }
+  if (d.pastStays && d.pastStays.length){
+    h.push('<div class="sec">Past stays</div>');
+    d.pastStays.slice(0, 6).forEach(function(s){
+      h.push('<div class="mut"><a href="' + esc(s.url) + '" target="_blank">' + esc(s.hotel) + '</a> ' + esc(String(s.when).slice(0, 10)) + '</div>');
+    });
+  }
+  h.push('<div class="mut" style="margin-top:8px">⚡ ' + esc(d.generated || '') + (EXEC ? ' · loading full view…' : '') + '</div>');
+  return h.join('');
+}
 function load(email, conv){
   var my = ++seq;
-  document.getElementById('p').innerHTML = 'Loading…';
-  var u = EXEC + '?action=clientPanel&mode=data&token=' + TOKEN +
-          '&email=' + encodeURIComponent(email || '') + '&conversation=' + encodeURIComponent(conv || '');
-  fetch(u).then(function(r){ return r.text(); }).then(function(h){
-    if (my === seq){ document.getElementById('p').innerHTML = h; dbg('bridge ok', true); }
-  }).catch(function(e){
-    if (my === seq){ document.getElementById('p').textContent = 'Data fetch failed: ' + e; dbg('fetch error · events: ' + evts); }
-  });
+  var p = document.getElementById('p');
+  var brainDrawn = false, gasDrawn = false;
+  if (!BRAIN || !BRAINTOKEN) p.innerHTML = 'Loading…';
+  // Brain first: store-served JSON, renders in ~contact time. Never draws over a GAS
+  // response that already arrived for this same selection.
+  if (BRAIN && BRAINTOKEN){
+    p.innerHTML = 'Loading…';
+    var bu = BRAIN.replace(/\/$/, '') + '/panel?token=' + encodeURIComponent(BRAINTOKEN) +
+             '&email=' + encodeURIComponent(email || '') + '&conversation=' + encodeURIComponent(conv || '');
+    fetch(bu).then(function(r){ return r.json(); }).then(function(d){
+      if (my === seq && !gasDrawn){ p.innerHTML = renderBrain(d); brainDrawn = true; dbg('brain ok', true); }
+    }).catch(function(e){ if (my === seq && !brainDrawn && !gasDrawn && !EXEC) { p.textContent = 'Data fetch failed: ' + e; dbg('brain fetch error'); } });
+  }
+  // GAS in parallel: fuller HTML (HubSpot backstory etc.) replaces the instant view on arrival.
+  if (EXEC && TOKEN){
+    var u = EXEC + '?action=clientPanel&mode=data&token=' + TOKEN +
+            '&email=' + encodeURIComponent(email || '') + '&conversation=' + encodeURIComponent(conv || '');
+    fetch(u).then(function(r){ return r.text(); }).then(function(h){
+      if (my === seq){ p.innerHTML = h; gasDrawn = true; dbg('bridge ok', true); }
+    }).catch(function(e){
+      if (my === seq && !brainDrawn){ p.textContent = 'Data fetch failed: ' + e; dbg('fetch error · events: ' + evts); }
+    });
+  }
 }
 window.onerror = function(m){ dbg('js error: ' + m); };
-if (!EXEC || !TOKEN) { dbg('missing ?exec= or ?token= in the integration URL'); }
+if ((!EXEC || !TOKEN) && (!BRAIN || !BRAINTOKEN)) { dbg('missing ?exec=&token= or ?brain=&braintoken= in the integration URL'); }
 else if (typeof Missive === 'undefined') { dbg('missive.js did not load'); }
 else {
   dbg('Missive object present · waiting for event…', true);
