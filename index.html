@@ -61,6 +61,16 @@ function renderBrain(d){
   } else if (d.email) {
     h.push('<div class="mut">No cards found for ' + esc(d.email) + '</div>');
   }
+  if (d.dup) h.push('<div class="warn">⚠ duplicate HubSpot contacts — verify identity before trusting history</div>');
+  if (d.backstory && (d.backstory.children || d.backstory.dietary || d.backstory.loyalty)) {
+    h.push('<div class="sec">Backstory</div><div class="bk">');
+    var bsRow = function(label, val, ts){ if (val) h.push('<div><span class="mut">' + label + ':</span> ' + esc(val) + (ts ? ' <span class="tag">' + esc(ts) + '</span>' : '') + '</div>'); };
+    bsRow('Children', d.backstory.children, d.backstory.children_ts);
+    bsRow('Dietary', d.backstory.dietary, d.backstory.dietary_ts);
+    bsRow('Loyalty', d.backstory.loyalty, d.backstory.loyalty_ts);
+    h.push('</div>');
+  }
+  (d.notes || []).forEach(function(n){ if (/backstory|hubspot/i.test(n)) h.push('<div class="mut">' + esc(n) + '</div>'); });
   if (d.threadCards && d.threadCards.length){
     h.push('<div class="sec">This thread</div>');
     d.threadCards.forEach(function(t){
