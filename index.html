@@ -70,6 +70,19 @@ function renderBrain(d){
     bsRow('Loyalty', d.backstory.loyalty, d.backstory.loyalty_ts);
     h.push('</div>');
   }
+  // KNOWN PARTY from our own past pre-arrivals (2026-08-19): the people and facts from the
+  // pre-arrival we actually sent for an earlier stay, verbatim, dated so the reader knows the
+  // ages belong to THAT stay. Served by the brain's client_history; absent = section absent.
+  if (d.knownParty && d.knownParty.party && d.knownParty.party.length) {
+    var kp = d.knownParty;
+    var kpWhen = (kp.sources && kp.sources[0] && kp.sources[0].sent_at) || '';
+    h.push('<div class="sec">Known party (our ' + esc(kpWhen || 'earlier') + ' pre-arrival)</div><div class="bk">');
+    h.push('<div>' + esc(kp.party.slice(0, 8).join(' · ')) + ' <span class="tag">as of that stay</span></div>');
+    (kp.allergies || []).slice(0, 3).forEach(function(a){ h.push('<div class="warn">⚠ ' + esc(a) + '</div>'); });
+    if ((kp.preferences || []).length) h.push('<div class="mut">Preferences then: ' + esc(kp.preferences.slice(0, 4).join(', ')) + '</div>');
+    if ((kp.occasions || []).length) h.push('<div class="mut">Occasion then: ' + esc(kp.occasions.slice(0, 2).join(', ')) + '</div>');
+    h.push('</div>');
+  }
   (d.notes || []).forEach(function(n){ if (/backstory|hubspot/i.test(n)) h.push('<div class="mut">' + esc(n) + '</div>'); });
   if (d.threadCards && d.threadCards.length){
     h.push('<div class="sec">This thread</div>');
